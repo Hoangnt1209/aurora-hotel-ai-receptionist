@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aurora AI Hotel Receptionist — Hospitality Console</title>
+  <style>
+    :root {
+      --bg: #0e1318;
+      --surface: #171f27;
+      --surface-2: #1f2a35;
+      --border: #2c3a49;
+      --gold: #d4af37;
+      --gold-soft: rgba(212, 175, 55, 0.14);
+      --text: #eef3f8;
+      --muted: #93a4b6;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --err: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand-badge {
+      width: 34px; height: 34px; border-radius: 8px;
+      background: var(--gold); color: #111; font-weight: 800;
+      display: grid; place-items: center;
+    }
+    .tabs { display: flex; gap: 8px; }
+    .tab-btn {
+      background: transparent; color: var(--muted);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 14px; cursor: pointer; font-weight: 600;
+    }
+    .tab-btn.active { background: var(--gold-soft); color: var(--gold); border-color: var(--gold); }
+    main { max-width: 1180px; margin: 22px auto; padding: 0 18px; }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px; margin-bottom: 16px;
+    }
+    .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    @media (max-width: 860px) { .grid-2, .grid-4 { grid-template-columns: 1fr; } }
+    h2, h3 { color: var(--gold); margin-bottom: 10px; }
+    label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+    input, select, textarea {
+      width: 100%; background: var(--surface-2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px;
+      margin-bottom: 10px; font-size: 14px;
+    }
+    button.primary {
+      background: var(--gold); color: #111; border: none; border-radius: 8px;
+      padding: 9px 16px; font-weight: 700; cursor: pointer;
+    }
+    button.secondary {
+      background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer;
+    }
+    button.danger {
+      background: rgba(248, 113, 113, 0.16); color: var(--err);
+      border: 1px solid var(--err); border-radius: 8px; padding: 8px 12px; font-weight: 700; cursor: pointer;
+    }
+    .chat-box {
+      height: 360px; overflow-y: auto; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 12px;
+    }
+    .msg { margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; }
+    .msg.user { background: var(--surface-2); margin-left: auto; border: 1px solid var(--border); }
+    .msg.assistant { background: var(--gold-soft); border: 1px solid rgba(212, 175, 55, 0.35); }
+    .meta-pill {
+      display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 99px;
+      background: var(--surface-2); color: var(--muted); margin-right: 6px; margin-top: 4px;
+    }
+    .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .kpi .num { font-size: 26px; font-weight: 800; color: var(--gold); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; }
+    .status-tag { padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; background: var(--surface-2); }
+    .mono { font-family: Consolas, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="brand-badge">A</div>
+    <div>
+      <strong>Aurora Hospitality Group</strong>
+      <div style="font-size:12px;color:var(--muted)">SGN Saigon • DAD Da Nang • PQC Phu Quoc</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <select id="ai-provider" style="width:auto;margin-bottom:0;padding:6px 10px;font-size:12px;">
+      <option value="">AI: Auto (.env / Fallback)</option>
+      <option value="gemini">Live AI: Google Gemini 2.5 Flash</option>
+      <option value="openai">Live AI: OpenAI gpt-4o-mini</option>
+    </select>
+    <input id="ai-key" type="password" placeholder="Optional API Key (in-memory)" style="width:180px;margin-bottom:0;padding:6px 10px;font-size:12px;" />
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('chat')">Guest Web Chat</button>
+    <button class="tab-btn" onclick="switchTab('voice')">Real-Time Voice</button>
+    <button class="tab-btn" onclick="switchTab('staff')">Staff Dashboard</button>
+    <a href="/call" target="_blank" style="text-decoration:none;background:rgba(34,197,94,0.16);color:#4ade80;border:1px solid #22c55e;border-radius:8px;padding:8px 12px;font-weight:700;font-size:13px;">Phone Dialer (/call)</a>
+  </div>
+</header>
+
+<main>
+  <!-- GUEST CHAT PANEL -->
+  <section id="tab-chat" class="panel active">
+    <div class="grid-2">
+      <div class="card">
+        <h3>AI Virtual Receptionist (Bilingual vi / en)</h3>
+        <div style="display:flex;gap:10px;margin-bottom:10px;">
+          <select id="chat-prop" style="max-width:220px;margin-bottom:0;">
+            <option value="">Auto-detect Property</option>
+            <option value="SGN">SGN — Aurora Saigon Central</option>
+            <option value="DAD">DAD — Aurora My Khe Beach</option>
+            <option value="PQC">PQC — Aurora Sunset Bay</option>
+          </select>
+          <button class="secondary" onclick="resetChat()">New Conversation</button>
+        </div>
+        <div id="chat-log" class="chat-box"></div>
+        <div style="display:flex;gap:8px;">
+          <input id="chat-input" placeholder="Ask about check-in/shuttle policies, check room availability, or book..." style="margin-bottom:0;" onkeydown="if(event.key==='Enter')sendChat()" />
+          <button class="primary" onclick="sendChat()">Send</button>
+          <button id="btn-confirm-chat" class="secondary" style="display:none;" onclick="quickConfirmChat()">Confirm</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Live Execution Trace & Guardrails</h3>
+        <div id="chat-trace" class="mono" style="color:var(--muted);white-space:pre-wrap;">Waiting for turn...</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REAL-TIME VOICE PANEL -->
+  <section id="tab-voice" class="panel">
+    <div class="grid-2">
+      <div class="card">
+        <h3>Voice Receptionist (VAD + Read-Back + Barge-In)</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+          Uses browser Web Speech when supported, or enter spoken transcript below. Click <strong>Barge-In Interrupt</strong> anytime to cut off TTS immediately.
+        </p>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+          <button class="primary" onclick="startMic()">Speak (Mic)</button>
+          <button class="danger" onclick="triggerBargeIn()">Barge-In Interrupt</button>
+          <span id="voice-state-badge" class="meta-pill">STATE: IDLE</span>
+        </div>
+        <div id="voice-log" class="chat-box"></div>
+        <div style="display:flex;gap:8px;">
+          <input id="voice-input" placeholder="Spoken transcript..." style="margin-bottom:0;" onkeydown="if(event.key==='Enter')sendVoice()" />
+          <button class="primary" onclick="sendVoice()">Send Voice Turn</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Voice Pipeline Telemetry</h3>
+        <div id="voice-telemetry" class="mono" style="color:var(--muted);white-space:pre-wrap;">No voice turn yet.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STAFF OPERATIONS DASHBOARD -->
+  <section id="tab-staff" class="panel">
+    <div id="staff-login-card" class="card" style="max-width:460px;">
+      <h3>Staff Operations Sign-In (RBAC)</h3>
+      <label>Staff Email</label>
+      <input id="staff-email" value="admin@aurora-hotel.vn" />
+      <label>Password</label>
+      <input id="staff-password" type="password" value="AuroraAdmin!2026" />
+      <button class="primary" onclick="loginStaff()">Sign In</button>
+      <div id="staff-auth-msg" style="margin-top:8px;font-size:13px;color:var(--err);"></div>
+    </div>
+
+    <div id="staff-portal" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div id="staff-banner" style="font-weight:700;color:var(--gold);"></div>
+        <button class="secondary" onclick="loadStaffDashboard()">Refresh Data</button>
+      </div>
+      <div class="grid-4" id="staff-kpis"></div>
+
+      <div class="card">
+        <h3>Reservations</h3>
+        <div style="overflow-x:auto;"><table id="tbl-reservations"></table></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Escalation Queue (Human Handoff)</h3>
+          <div style="overflow-x:auto;"><table id="tbl-escalations"></table></div>
+        </div>
+        <div class="card">
+          <h3>Support Tickets</h3>
+          <div style="overflow-x:auto;"><table id="tbl-tickets"></table></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Audit Logs (Traceability)</h3>
+        <div style="overflow-x:auto;"><table id="tbl-audits"></table></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+  let chatConvId = null;
+  let voiceConvId = null;
+  let staffToken = null;
+
+  function switchTab(name) {
+    document.querySelectorAll(".tab-btn").forEach((b, i) => {
+      b.classList.toggle("active", ["chat","voice","staff"][i] === name);
+    });
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    document.getElementById("tab-" + name).classList.add("active");
+  }
+
+  function appendMsg(elId, role, text, meta = "") {
+    const box = document.getElementById(elId);
+    const div = document.createElement("div");
+    div.className = "msg " + role;
+    div.textContent = text;
+    if (meta) {
+      const m = document.createElement("div");
+      m.innerHTML = meta;
+      div.appendChild(m);
+    }
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function resetChat() {
+    chatConvId = null;
+    document.getElementById("chat-log").innerHTML = "";
+    document.getElementById("chat-trace").textContent = "New conversation started.";
+    document.getElementById("btn-confirm-chat").style.display = "none";
+  }
+
+  async function sendChat(overrideText = null) {
+    const input = document.getElementById("chat-input");
+    const msg = overrideText || input.value.trim();
+    if (!msg) return;
+    if (!overrideText) input.value = "";
+    appendMsg("chat-log", "user", msg);
+
+    const prop = document.getElementById("chat-prop").value || null;
+    const aiProv = document.getElementById("ai-provider").value;
+    const aiKey = document.getElementById("ai-key").value.trim();
+    const headers = { "Content-Type": "application/json" };
+    if (aiProv) headers["X-AI-Provider"] = aiProv;
+    if (aiKey) headers["X-AI-Api-Key"] = aiKey;
+
+    const resp = await fetch("/api/v1/chat/turn", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message: msg, conversation_id: chatConvId, property_code: prop })
+    });
+    const data = await resp.json();
+    chatConvId = data.conversation_id;
+
+    let pills = `<span class="meta-pill">${data.intent}</span><span class="meta-pill">ai: ${data.ai_provider_used}</span><span class="meta-pill">trace: ${data.trace_id.slice(0,8)}</span>`;
+    if (data.escalation_code) pills += `<span class="meta-pill">ESC: ${data.escalation_code}</span>`;
+    appendMsg("chat-log", "assistant", data.reply, pills);
+
+    document.getElementById("btn-confirm-chat").style.display = data.requires_confirmation ? "inline-block" : "none";
+    document.getElementById("chat-trace").textContent = JSON.stringify({
+      intent: data.intent,
+      ai_provider_used: data.ai_provider_used,
+      requires_confirmation: data.requires_confirmation,
+      verified_codes: data.verified_codes,
+      citations: data.citations,
+      tool_traces: data.tool_traces
+    }, null, 2);
+  }
+
+  function quickConfirmChat() { sendChat("Confirm"); }
+
+  function speakText(text, lang) {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang === "vi" ? "vi-VN" : "en-US";
+    window.speechSynthesis.speak(u);
+  }
+
+  function startMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { alert("Browser SpeechRecognition unavailable — please type transcript below."); return; }
+    const rec = new SR();
+    rec.lang = "vi-VN";
+    rec.onresult = (ev) => {
+      const txt = ev.results[0][0].transcript;
+      document.getElementById("voice-input").value = txt;
+      sendVoice();
+    };
+    rec.start();
+  }
+
+  async function sendVoice() {
+    const input = document.getElementById("voice-input");
+    const txt = input.value.trim();
+    if (!txt) return;
+    input.value = "";
+    appendMsg("voice-log", "user", txt);
+
+    const aiProv = document.getElementById("ai-provider").value;
+    const aiKey = document.getElementById("ai-key").value.trim();
+    const headers = { "Content-Type": "application/json" };
+    if (aiProv) headers["X-AI-Provider"] = aiProv;
+    if (aiKey) headers["X-AI-Api-Key"] = aiKey;
+
+    const resp = await fetch("/api/v1/voice/turn", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ transcript: txt, conversation_id: voiceConvId })
+    });
+    const data = await resp.json();
+    voiceConvId = data.conversation_id;
+    document.getElementById("voice-state-badge").textContent = `STATE: ${data.state} · ${data.tts_engine} (${data.voice_preset})`;
+    appendMsg("voice-log", "assistant", data.spoken_text, `<span class="meta-pill">${data.tts_sentences.length} TTS chunks</span><span class="meta-pill">${data.sample_rate_hz} Hz · ${data.tts_backend}</span>`);
+    document.getElementById("voice-telemetry").textContent = JSON.stringify({ ...data.telemetry, tts_engine: data.tts_engine, voice_preset: data.voice_preset, audio_url: data.audio_url }, null, 2);
+    if (data.audio_url && data.tts_backend !== "fast_wav_fallback") {
+      new Audio(data.audio_url).play().catch(() => speakText(data.spoken_text, data.language));
+    } else {
+      speakText(data.spoken_text, data.language);
+    }
+  }
+
+  async function triggerBargeIn() {
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    if (!voiceConvId) return;
+    const resp = await fetch("/api/v1/voice/barge-in", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: voiceConvId })
+    });
+    const data = await resp.json();
+    document.getElementById("voice-state-badge").textContent = "STATE: " + data.state + " (INTERRUPTED)";
+    appendMsg("voice-log", "assistant", `[Barge-In] Flushed ${data.flushed_chunks_count} queued TTS chunks. Ready to listen.`);
+  }
+
+  async function loginStaff() {
+    const email = document.getElementById("staff-email").value.trim();
+    const password = document.getElementById("staff-password").value;
+    const resp = await fetch("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    if (!resp.ok) {
+      document.getElementById("staff-auth-msg").textContent = "Login failed.";
+      return;
+    }
+    const data = await resp.json();
+    staffToken = data.access_token;
+    document.getElementById("staff-login-card").style.display = "none";
+    document.getElementById("staff-portal").style.display = "block";
+    document.getElementById("staff-banner").textContent = `${data.staff.full_name} (${data.staff.role} — ${data.staff.property_code || "ALL PROPERTIES"})`;
+    loadStaffDashboard();
+  }
+
+  async function staffFetch(url, opts = {}) {
+    return fetch(url, {
+      ...opts,
+      headers: { ...(opts.headers || {}), Authorization: "Bearer " + staffToken, "Content-Type": "application/json" }
+    });
+  }
+
+  async function loadStaffDashboard() {
+    const [dashR, resR, escR, tckR, audR] = await Promise.all([
+      staffFetch("/api/v1/staff/dashboard"),
+      staffFetch("/api/v1/staff/reservations"),
+      staffFetch("/api/v1/staff/escalations"),
+      staffFetch("/api/v1/staff/tickets"),
+      staffFetch("/api/v1/staff/audit-logs?limit=20").catch(() => null),
+    ]);
+    const dash = await dashR.json();
+    const m = dash.metrics;
+    document.getElementById("staff-kpis").innerHTML = `
+      <div class="kpi"><div style="color:var(--muted);font-size:12px">Reservations</div><div class="num">${m.total_reservations}</div></div>
+      <div class="kpi"><div style="color:var(--muted);font-size:12px">Checked In</div><div class="num">${m.checked_in_reservations}</div></div>
+      <div class="kpi"><div style="color:var(--muted);font-size:12px">Open Escalations</div><div class="num">${m.open_escalations}</div></div>
+      <div class="kpi"><div style="color:var(--muted);font-size:12px">Open Tickets</div><div class="num">${m.open_tickets}</div></div>
+    `;
+
+    const reservations = await resR.json();
+    document.getElementById("tbl-reservations").innerHTML = `
+      <tr><th>Code</th><th>Property</th><th>Guest</th><th>Dates</th><th>Total</th><th>Status</th><th>Action</th></tr>
+      ${reservations.map(r => `
+        <tr>
+          <td class="mono">${r.confirmation_code}</td>
+          <td>${r.property_code}</td>
+          <td>${r.guest_full_name}</td>
+          <td>${r.check_in_date} → ${r.check_out_date}</td>
+          <td>${Number(r.total_amount_vnd).toLocaleString()} VND</td>
+          <td><span class="status-tag">${r.status}</span></td>
+          <td>
+            ${r.status === "CONFIRMED" ? `<button class="secondary" onclick="staffTransition('${r.confirmation_code}','CHECKED_IN')">Check-In</button>` : ""}
+            ${r.status === "CHECKED_IN" ? `<button class="secondary" onclick="staffTransition('${r.confirmation_code}','CHECKED_OUT')">Check-Out</button>` : ""}
+          </td>
+        </tr>
+      `).join("")}
+    `;
+
+    const escalations = await escR.json();
+    document.getElementById("tbl-escalations").innerHTML = `
+      <tr><th>Code</th><th>Reason</th><th>Status</th><th>Action</th></tr>
+      ${escalations.map(e => `
+        <tr>
+          <td class="mono">${e.escalation_code}</td>
+          <td>${e.reason_code}<br/><small style="color:var(--muted)">${e.summary.slice(0,80)}</small></td>
+          <td><span class="status-tag">${e.status}</span></td>
+          <td>${e.status !== "RESOLVED" ? `<button class="secondary" onclick="resolveEsc('${e.escalation_code}')">Resolve</button>` : "Done"}</td>
+        </tr>
+      `).join("")}
+    `;
+
+    const tickets = await tckR.json();
+    document.getElementById("tbl-tickets").innerHTML = `
+      <tr><th>Code</th><th>Category</th><th>Status</th><th>Action</th></tr>
+      ${tickets.map(t => `
+        <tr>
+          <td class="mono">${t.ticket_code}</td>
+          <td>${t.category}<br/><small style="color:var(--muted)">${t.description.slice(0,80)}</small></td>
+          <td><span class="status-tag">${t.status}</span></td>
+          <td>${t.status !== "RESOLVED" ? `<button class="secondary" onclick="resolveTicket('${t.ticket_code}')">Resolve</button>` : "Done"}</td>
+        </tr>
+      `).join("")}
+    `;
+
+    if (audR && audR.ok) {
+      const audits = await audR.json();
+      document.getElementById("tbl-audits").innerHTML = `
+        <tr><th>Action</th><th>Actor</th><th>Entity</th><th>Trace ID</th></tr>
+        ${audits.map(a => `
+          <tr>
+            <td>${a.action}</td>
+            <td>${a.actor_type}</td>
+            <td class="mono">${a.entity_type}:${a.entity_id.slice(0,8)}</td>
+            <td class="mono">${a.trace_id}</td>
+          </tr>
+        `).join("")}
+      `;
+    }
+  }
+
+  async function staffTransition(code, target) {
+    await staffFetch(`/api/v1/staff/reservations/${code}/status`, {
+      method: "POST", body: JSON.stringify({ target_status: target })
+    });
+    loadStaffDashboard();
+  }
+
+  async function resolveEsc(code) {
+    await staffFetch(`/api/v1/staff/escalations/${code}`, {
+      method: "PATCH", body: JSON.stringify({ status: "RESOLVED", resolution_note: "Handled via dashboard" })
+    });
+    loadStaffDashboard();
+  }
+
+  async function resolveTicket(code) {
+    await staffFetch(`/api/v1/staff/tickets/${code}`, {
+      method: "PATCH", body: JSON.stringify({ status: "RESOLVED" })
+    });
+    loadStaffDashboard();
+  }
+</script>
+</body>
+</html>

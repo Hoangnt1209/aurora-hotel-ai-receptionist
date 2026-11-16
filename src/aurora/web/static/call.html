@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Aurora 1900-AURORA — Gọi Lễ Tân AI (VieNeu-TTS v3 Turbo)</title>
+  <style>
+    :root {
+      --bg: #080d12;
+      --card: #121a23;
+      --gold: #d4af37;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --green: #22c55e;
+      --red: #ef4444;
+      --border: #243242;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at top, #172330, var(--bg) 65%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+    .phone {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 22px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    }
+    .top { text-align: center; }
+    .badge {
+      display: inline-block;
+      background: rgba(212, 175, 55, 0.14);
+      color: var(--gold);
+      border: 1px solid rgba(212, 175, 55, 0.4);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 99px;
+      margin-bottom: 10px;
+    }
+    h1 { font-size: 20px; margin-bottom: 4px; }
+    .timer { font-family: Consolas, monospace; font-size: 15px; color: var(--gold); margin: 6px 0; }
+    .status { font-size: 13px; color: var(--muted); min-height: 20px; }
+    .controls-row {
+      display: flex; gap: 8px; margin: 12px 0;
+    }
+    select, input {
+      width: 100%;
+      background: #0b1117;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 11px;
+      font-size: 13px;
+    }
+    .transcript-box {
+      flex: 1;
+      min-height: 240px;
+      max-height: 320px;
+      overflow-y: auto;
+      background: #0b1117;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .bubble { margin-bottom: 10px; padding: 9px 12px; border-radius: 12px; line-height: 1.45; }
+    .bubble.caller { background: #1e293b; margin-left: 24px; }
+    .bubble.ai { background: rgba(212, 175, 55, 0.12); border: 1px solid rgba(212, 175, 55, 0.35); margin-right: 24px; }
+    .dial-actions {
+      display: flex;
+      justify-content: center;
+      gap: 18px;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .circle-btn {
+      width: 68px; height: 68px; border-radius: 50%; border: none;
+      color: white; font-weight: 700; font-size: 13px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+    .btn-call { background: var(--green); }
+    .btn-hangup { background: var(--red); }
+    .btn-barge {
+      background: #f59e0b; color: #111;
+      padding: 10px 14px; border-radius: 99px; border: none; font-weight: 700; cursor: pointer;
+    }
+    .type-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .send-btn {
+      background: var(--gold); color: #111; border: none;
+      border-radius: 10px; padding: 0 14px; font-weight: 700; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+<div class="phone">
+  <div>
+    <div class="top">
+      <div class="badge">VieNeu-TTS v3 Turbo · 48 kHz</div>
+      <h1>Aurora 1900-AURORA</h1>
+      <div class="timer" id="call-timer">00:00</div>
+      <div class="status" id="call-status">Bấm nút Xanh để bắt đầu cuộc gọi</div>
+    </div>
+
+    <div class="controls-row">
+      <select id="call-prop">
+        <option value="SGN">Sài Gòn (Giọng Thùy Dung)</option>
+        <option value="DAD">Đà Nẵng (Giọng Ngọc Trân)</option>
+        <option value="PQC">Phú Quốc (Giọng Mai Anh)</option>
+      </select>
+    </div>
+
+    <div id="call-log" class="transcript-box"></div>
+    <audio id="tts-player" style="display:none;"></audio>
+
+    <div class="type-row">
+      <input id="manual-speech" placeholder="Hoặc gõ câu nói test nhanh..." onkeydown="if(event.key==='Enter')sendManual()" />
+      <button class="send-btn" onclick="sendManual()">Nói</button>
+    </div>
+  </div>
+
+  <div class="dial-actions">
+    <button id="btn-start" class="circle-btn btn-call" onclick="startCall()">Gọi</button>
+    <button class="btn-barge" onclick="bargeIn()">Ngắt lời</button>
+    <button id="btn-end" class="circle-btn btn-hangup" onclick="endCall()" disabled style="opacity:0.45;">Tắt</button>
+  </div>
+</div>
+
+<script>
+  let convId = null;
+  let callActive = false;
+  let seconds = 0;
+  let timerHandle = null;
+  let recognition = null;
+  const player = document.getElementById("tts-player");
+
+  function setStatus(txt) { document.getElementById("call-status").textContent = txt; }
+
+  function addBubble(role, text, meta = "") {
+    const box = document.getElementById("call-log");
+    const div = document.createElement("div");
+    div.className = "bubble " + role;
+    div.textContent = text;
+    if (meta) {
+      const s = document.createElement("div");
+      s.style.cssText = "font-size:11px;color:#94a3b8;margin-top:4px;";
+      s.textContent = meta;
+      div.appendChild(s);
+    }
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function startCall() {
+    callActive = true;
+    seconds = 0;
+    document.getElementById("btn-start").disabled = true;
+    document.getElementById("btn-start").style.opacity = "0.45";
+    document.getElementById("btn-end").disabled = false;
+    document.getElementById("btn-end").style.opacity = "1";
+    timerHandle = setInterval(() => {
+      seconds++;
+      const m = String(Math.floor(seconds / 60)).padStart(2, "0");
+      const s = String(seconds % 60).padStart(2, "0");
+      document.getElementById("call-timer").textContent = `${m}:${s}`;
+    }, 1000);
+
+    const greeting = "Xin chào! Đây là lễ tân AI Aurora. Tôi có thể hỗ trợ đặt phòng hoặc giải đáp chính sách gì cho quý khách ạ?";
+    addBubble("ai", greeting, "VieNeu-TTS v3 Turbo Ready");
+    speakViaEngine(greeting, "vi", null, "fast_wav_fallback");
+    listenMic();
+  }
+
+  function endCall() {
+    callActive = false;
+    clearInterval(timerHandle);
+    stopPlayback();
+    if (recognition) { try { recognition.stop(); } catch (_) {} }
+    document.getElementById("btn-start").disabled = false;
+    document.getElementById("btn-start").style.opacity = "1";
+    document.getElementById("btn-end").disabled = true;
+    document.getElementById("btn-end").style.opacity = "0.45";
+    setStatus("Cuộc gọi đã kết thúc");
+  }
+
+  function stopPlayback() {
+    player.pause();
+    player.currentTime = 0;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  }
+
+  function speakViaEngine(text, lang, audioUrl, backend) {
+    stopPlayback();
+    if (audioUrl && backend !== "fast_wav_fallback") {
+      setStatus("Đang phát giọng VieNeu-TTS v3 Turbo...");
+      player.src = audioUrl;
+      player.onended = () => { if (callActive) listenMic(); };
+      player.play().catch(() => {});
+      return;
+    }
+    if ("speechSynthesis" in window) {
+      setStatus("Đang nói...");
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = lang === "vi" ? "vi-VN" : "en-US";
+      u.onend = () => { if (callActive) setStatus("Đang lắng nghe..."); };
+      window.speechSynthesis.speak(u);
+    }
+  }
+
+  function listenMic() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setStatus("Trình duyệt chưa hỗ trợ mic tự động — hãy gõ ở ô bên dưới");
+      return;
+    }
+    recognition = new SR();
+    recognition.lang = "vi-VN";
+    recognition.interimResults = false;
+    recognition.onstart = () => setStatus("Đang lắng nghe giọng nói của bạn...");
+    recognition.onresult = (ev) => {
+      const txt = ev.results[0][0].transcript;
+      stopPlayback();
+      sendVoiceTurn(txt);
+    };
+    recognition.onerror = () => {
+      if (callActive) setStatus("Chờ lượt nói tiếp theo (hoặc gõ ô bên dưới)");
+    };
+    try { recognition.start(); } catch (_) {}
+  }
+
+  async function sendVoiceTurn(txt) {
+    if (!txt) return;
+    addBubble("caller", txt);
+    setStatus("Đang xử lý LangGraph + VieNeu-TTS...");
+    const prop = document.getElementById("call-prop").value;
+    const resp = await fetch("/api/v1/voice/turn", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript: txt, conversation_id: convId, property_code: prop })
+    });
+    const data = await resp.json();
+    convId = data.conversation_id;
+    addBubble("ai", data.spoken_text, `${data.tts_engine} · ${data.voice_preset} · ${data.sample_rate_hz}Hz (${data.tts_backend})`);
+    speakViaEngine(data.spoken_text, data.language, data.audio_url, data.tts_backend);
+  }
+
+  function sendManual() {
+    const inp = document.getElementById("manual-speech");
+    const txt = inp.value.trim();
+    if (!txt) return;
+    inp.value = "";
+    sendVoiceTurn(txt);
+  }
+
+  async function bargeIn() {
+    stopPlayback();
+    if (convId) {
+      await fetch("/api/v1/voice/barge-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: convId })
+      });
+    }
+    setStatus("Đã ngắt lời AI — Mời bạn nói tiếp!");
+    listenMic();
+  }
+</script>
+</body>
+</html>

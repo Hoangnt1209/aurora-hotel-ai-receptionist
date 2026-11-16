@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aurora-postgres
+    environment:
+      POSTGRES_USER: aurora
+      POSTGRES_PASSWORD: aurora_dev_password
+      POSTGRES_DB: aurora_hotel
+    ports:
+      - "5432:5432"
+    volumes:
+      - aurora_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aurora -d aurora_hotel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: aurora-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://aurora:aurora_dev_password@postgres:5432/aurora_hotel
+      DATABASE_URL_SYNC: postgresql+psycopg://aurora:aurora_dev_password@postgres:5432/aurora_hotel
+    ports:
+      - "8000:8000"
+
+volumes:
+  aurora_pgdata:
