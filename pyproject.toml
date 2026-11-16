@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurora"
+version = "0.1.0"
+description = "Aurora AI Hotel Receptionist — Deterministic Booking Core & AI Orchestration"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic[email]>=2.9.0",
+    "pydantic-settings>=2.5.0",
+    "sqlalchemy[asyncio]>=2.0.35",
+    "asyncpg>=0.30.0",
+    "psycopg[binary]>=3.2.0",
+    "alembic>=1.13.3",
+    "pgvector>=0.3.5",
+    "bcrypt>=4.2.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "pyjwt>=2.9.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+voice = [
+    "vieneu>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["src"]
