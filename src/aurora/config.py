@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     vieneu_mode: str = "auto"  # auto | local_sdk | remote_api | fast_wav
     vieneu_api_url: str | None = None
     vieneu_default_voice: str = "Mai Anh"
+    twilio_account_sid: str | None = None
+    twilio_auth_token: str | None = None
+    twilio_from_phone: str | None = None
+    public_base_url: str = "http://localhost:8000"
 
 
 @lru_cache(maxsize=1)

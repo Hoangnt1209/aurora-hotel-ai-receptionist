@@ -70,6 +70,11 @@ from aurora.services.escalation_service import (
     list_escalations,
     resolve_escalation,
 )
+from aurora.services.outbound_call import (
+    OutboundCallRequest,
+    OutboundCallResult,
+    dispatch_outbound_call,
+)
 from aurora.services.ticket_service import (
     create_support_ticket,
     list_support_tickets,
@@ -549,6 +554,26 @@ async def api_twilio_gather_speech(
 
     play_url = f"{base}{result.audio_url}"
     return _build_twiml_gather(play_url, gather_url)
+
+
+@router.post("/telephony/outbound-call", response_model=ToolResult[OutboundCallResult])
+async def api_trigger_outbound_call(
+    req: OutboundCallRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db_session),
+) -> ToolResult[OutboundCallResult]:
+    """Initiate an outbound phone call with VieNeu-TTS v3 Turbo greeting."""
+    res = await dispatch_outbound_call(
+        session,
+        req,
+        trace_id=_trace_id(request),
+    )
+    return ToolResult(
+        ok=res.ok,
+        data=res,
+        message="Outbound call dispatched.",
+        trace_id=_trace_id(request),
+    )
 
 
 @router.get("/conversations/{conversation_id}")

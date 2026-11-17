@@ -47,20 +47,38 @@ def select_voice_for_property(
     return get_settings().vieneu_default_voice
 
 
+AUDIO_CACHE_DIR = Path("outputs") / "audio_cache"
+
 def store_audio_wav(wav_bytes: bytes) -> str:
-    """Store WAV audio in bounded memory cache and return its audio_id."""
+    """Store WAV audio in memory and disk cache and return its audio_id."""
     audio_id = uuid4().hex
     with _CACHE_LOCK:
         _AUDIO_CACHE[audio_id] = wav_bytes
         while len(_AUDIO_CACHE) > _MAX_CACHE_ITEMS:
             _AUDIO_CACHE.popitem(last=False)
+    try:
+        AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (AUDIO_CACHE_DIR / f"{audio_id}.wav").write_bytes(wav_bytes)
+    except Exception:
+        pass
     return audio_id
 
 
 def get_audio_wav(audio_id: str) -> bytes | None:
-    """Fetch cached WAV audio bytes by audio_id."""
+    """Fetch cached WAV audio bytes by audio_id from memory or disk cache."""
     with _CACHE_LOCK:
-        return _AUDIO_CACHE.get(audio_id)
+        if audio_id in _AUDIO_CACHE:
+            return _AUDIO_CACHE[audio_id]
+    disk_path = AUDIO_CACHE_DIR / f"{audio_id}.wav"
+    if disk_path.exists():
+        try:
+            data = disk_path.read_bytes()
+            with _CACHE_LOCK:
+                _AUDIO_CACHE[audio_id] = data
+            return data
+        except Exception:
+            return None
+    return None
 
 
 def pcm_float32_to_wav_bytes(

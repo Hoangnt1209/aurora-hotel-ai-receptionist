@@ -123,6 +123,16 @@
       </select>
     </div>
 
+    <!-- Outbound dialing panel -->
+    <div style="background:#0e1722;border:1px solid #233446;border-radius:12px;padding:10px;margin-bottom:12px;">
+      <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;margin-bottom:6px;">Cuộc gọi đi (Outbound Call)</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input id="outbound-phone" value="0989068343" placeholder="Số điện thoại (vd: 0989068343)" style="flex:1;" />
+        <button onclick="startOutboundCall()" style="background:#22c55e;color:#fff;border:none;border-radius:10px;padding:0 12px;font-size:12px;font-weight:700;cursor:pointer;">Gọi số này</button>
+      </div>
+      <input id="outbound-greeting" value="Xin chào, mình là nhân viên từ khách sạn Aurora gọi đến để xác nhận thông tin đặt phòng của quý khách." placeholder="Câu thoại mở đầu..." style="font-size:12px;" />
+    </div>
+
     <div id="call-log" class="transcript-box"></div>
     <audio id="tts-player" style="display:none;"></audio>
 
@@ -184,6 +194,63 @@
     listenMic();
   }
 
+  async function startOutboundCall() {
+    const phoneInput = document.getElementById("outbound-phone").value.trim();
+    const msgInput = document.getElementById("outbound-greeting").value.trim();
+    const prop = document.getElementById("call-prop").value;
+
+    if (!phoneInput) {
+      alert("Vui lòng nhập số điện thoại (vd: 0989068343)");
+      return;
+    }
+
+    callActive = true;
+    seconds = 0;
+    document.getElementById("btn-start").disabled = true;
+    document.getElementById("btn-start").style.opacity = "0.45";
+    document.getElementById("btn-end").disabled = false;
+    document.getElementById("btn-end").style.opacity = "1";
+    timerHandle = setInterval(() => {
+      seconds++;
+      const m = String(Math.floor(seconds / 60)).padStart(2, "0");
+      const s = String(seconds % 60).padStart(2, "0");
+      document.getElementById("call-timer").textContent = `${m}:${s}`;
+    }, 1000);
+
+    setStatus(`Đang gọi tới ${phoneInput} và tổng hợp giọng nói VieNeu-TTS v3 Turbo...`);
+
+    try {
+      const resp = await fetch("/api/v1/telephony/outbound-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to_phone: phoneInput,
+          message: msgInput || "Xin chào mình là nhân viên từ khách sạn gọi đến để xác nhận",
+          property_code: prop
+        })
+      });
+
+      const res = await resp.json();
+      if (!res.ok) {
+        setStatus(`Lỗi: ${res.message || "Không thể thực hiện cuộc gọi"}`);
+        endCall();
+        return;
+      }
+
+      const d = res.data;
+      convId = d.conversation_id;
+      addBubble("ai", msgInput, `📞 Gọi tới ${d.to_phone} · VieNeu-TTS v3 Turbo (${d.voice_preset}) · 48 kHz`);
+
+      setStatus(`Đang kết nối: ${d.status === "DIALING_CARRIER" ? "Đã quay số viễn thông qua Twilio PSTN" : "Mô phỏng đàm thoại hai chiều trực tiếp"}`);
+
+      // Play the generated 48kHz VieNeu-TTS audio
+      speakViaEngine(msgInput, "vi", d.audio_url, d.tts_backend);
+    } catch (err) {
+      setStatus(`Lỗi mạng: ${err.message}`);
+      endCall();
+    }
+  }
+
   function endCall() {
     callActive = false;
     clearInterval(timerHandle);
@@ -204,18 +271,26 @@
 
   function speakViaEngine(text, lang, audioUrl, backend) {
     stopPlayback();
-    if (audioUrl && backend !== "fast_wav_fallback") {
+    if (audioUrl) {
       setStatus("Đang phát giọng VieNeu-TTS v3 Turbo...");
       player.src = audioUrl;
       player.onended = () => { if (callActive) listenMic(); };
-      player.play().catch(() => {});
+      player.play().catch((err) => {
+        console.warn("Audio play blocked:", err);
+        if ("speechSynthesis" in window) {
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = lang === "vi" ? "vi-VN" : "en-US";
+          u.onend = () => { if (callActive) listenMic(); };
+          window.speechSynthesis.speak(u);
+        }
+      });
       return;
     }
     if ("speechSynthesis" in window) {
       setStatus("Đang nói...");
       const u = new SpeechSynthesisUtterance(text);
       u.lang = lang === "vi" ? "vi-VN" : "en-US";
-      u.onend = () => { if (callActive) setStatus("Đang lắng nghe..."); };
+      u.onend = () => { if (callActive) listenMic(); };
       window.speechSynthesis.speak(u);
     }
   }
