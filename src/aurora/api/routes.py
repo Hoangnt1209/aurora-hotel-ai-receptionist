@@ -524,6 +524,29 @@ async def api_twilio_incoming_call(
     return _build_twiml_gather(play_url, gather_url)
 
 
+@router.api_route("/telephony/twilio/outbound-twiml", methods=["GET", "POST"], response_class=Response)
+async def api_twilio_outbound_twiml(
+    request: Request,
+    conv_id: str = Query(default=""),
+    audio_id: str = Query(default=""),
+) -> Response:
+    """Serve initial greeting TwiML for Twilio outbound call."""
+    base = str(request.base_url).rstrip("/")
+    play_url = f"{base}/api/v1/telephony/tts/{audio_id}.wav" if audio_id else ""
+    gather_url = f"{base}/api/v1/telephony/twilio/gather?CallSid={conv_id}"
+    greeting = "Xin chào, mình là nhân viên từ khách sạn Aurora gọi đến để xác nhận thông tin đặt phòng của quý khách."
+    xml_body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<Response>\n"
+        f'  <Gather input="speech" language="vi-VN" speechTimeout="auto" bargeIn="true" action="{xml_escape(gather_url)}" method="POST">\n'
+        f"    <Play>{xml_escape(play_url)}</Play>\n"
+        f"    <Say language=\"vi-VN\">{xml_escape(greeting)}</Say>\n"
+        "  </Gather>\n"
+        "</Response>\n"
+    )
+    return Response(content=xml_body, media_type="application/xml")
+
+
 @router.post("/telephony/twilio/gather")
 async def api_twilio_gather_speech(
     request: Request,

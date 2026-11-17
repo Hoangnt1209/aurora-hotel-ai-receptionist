@@ -1,7 +1,8 @@
 """Tests for outbound phone call dispatching, VieNeu-TTS synthesis, and phone number validation."""
 
+import httpx
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import ASGITransport, AsyncClient, Response as HttpxResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +22,9 @@ def test_normalize_vietnamese_phone_formats():
     """Verify phone normalization handles common Vietnamese mobile formats."""
     assert normalize_vietnamese_phone("0989068343") == "+84989068343"
     assert normalize_vietnamese_phone("+84989068343") == "+84989068343"
+    assert normalize_vietnamese_phone("+840989068343") == "+84989068343"
     assert normalize_vietnamese_phone("84989068343") == "+84989068343"
+    assert normalize_vietnamese_phone("840989068343") == "+84989068343"
     assert normalize_vietnamese_phone("098 906 8343") == "+84989068343"
     assert normalize_vietnamese_phone("098-906-8343") == "+84989068343"
     assert normalize_vietnamese_phone("0907123456") == "+84907123456"
@@ -38,9 +41,19 @@ def test_normalize_vietnamese_phone_formats():
 
 async def test_dispatch_outbound_call_synthesizes_voice_and_records_audit(
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Outbound call request synthesizes 48kHz VieNeu-TTS WAV, creates conversation, and writes audit log."""
     await seed_database(db_session)
+
+    orig_post = httpx.AsyncClient.post
+
+    async def mock_post(self, url, **kwargs):
+        if "api.twilio.com" in str(url):
+            return HttpxResponse(201, json={"sid": "CAmock123456789", "status": "queued"})
+        return await orig_post(self, url, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
     req = OutboundCallRequest(
         to_phone="0989068343",
@@ -98,9 +111,21 @@ async def test_dispatch_outbound_call_synthesizes_voice_and_records_audit(
     assert audit.after_state["to_phone"] == "+84989068343"
 
 
-async def test_api_outbound_call_endpoint(db_session: AsyncSession) -> None:
+async def test_api_outbound_call_endpoint(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify HTTP POST /api/v1/telephony/outbound-call endpoint."""
     await seed_database(db_session)
+
+    orig_post = httpx.AsyncClient.post
+
+    async def mock_post(self, url, **kwargs):
+        if "api.twilio.com" in str(url):
+            return HttpxResponse(201, json={"sid": "CAmockendpoint999", "status": "queued"})
+        return await orig_post(self, url, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

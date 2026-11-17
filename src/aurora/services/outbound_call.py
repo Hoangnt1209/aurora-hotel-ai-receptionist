@@ -5,6 +5,8 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import httpx
+from xml.sax.saxutils import escape as xml_escape
+
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +54,11 @@ class OutboundCallResult(BaseModel):
 def normalize_vietnamese_phone(raw_phone: str) -> str:
     """Normalize and validate Vietnamese mobile numbers into E.164 (+84...) format."""
     clean = re.sub(r"[\s\-\.\(\)]", "", raw_phone)
-    if clean.startswith("0"):
+    if clean.startswith("+840"):
+        clean = "+84" + clean[4:]
+    elif clean.startswith("840"):
+        clean = "+84" + clean[3:]
+    elif clean.startswith("0"):
         clean = "+84" + clean[1:]
     elif clean.startswith("84") and not clean.startswith("+84"):
         clean = "+" + clean
@@ -145,16 +151,7 @@ async def dispatch_outbound_call(
 
     if has_twilio:
         base_url = (settings.public_base_url or "http://localhost:8000").rstrip("/")
-        full_audio_url = f"{base_url}{audio_url}"
-        gather_action = f"{base_url}/api/v1/telephony/twilio/gather?CallSid={conv.id}"
-        inline_twiml = (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            "<Response>\n"
-            f'  <Gather input="speech" language="vi-VN" speechTimeout="auto" bargeIn="true" action="{gather_action}" method="POST">\n'
-            f"    <Play>{full_audio_url}</Play>\n"
-            "  </Gather>\n"
-            "</Response>"
-        )
+        twiml_url = f"{base_url}/api/v1/telephony/twilio/outbound-twiml?conv_id={conv.id}&audio_id={audio_id}"
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -164,30 +161,51 @@ async def dispatch_outbound_call(
                     data={
                         "To": normalized_phone,
                         "From": settings.twilio_from_phone,
-                        "Twiml": inline_twiml,
+                        "Url": twiml_url,
                     },
                 )
-                carrier_data = resp.json() if resp.status_code < 400 else {}
+                carrier_data = resp.json() if resp.status_code < 500 else {}
                 call_sid = carrier_data.get("sid")
                 carrier_status = carrier_data.get("status", "queued")
 
-                return OutboundCallResult(
-                    ok=True,
-                    status="DIALING_CARRIER",
-                    to_phone=normalized_phone,
-                    property_code=prop_code,
-                    voice_preset=tts_res["voice_preset"],
-                    tts_engine=tts_res["tts_engine"],
-                    tts_backend=tts_res["tts_backend"],
-                    audio_url=audio_url,
-                    audio_id=audio_id,
-                    byte_length=tts_res["byte_length"],
-                    conversation_id=str(conv.id),
-                    carrier_status=carrier_status,
-                    carrier_call_sid=call_sid,
-                    note="Cuộc gọi đã được đẩy tới tổng đài viễn thông Twilio PSTN để rung chuông số điện thoại.",
-                    trace_id=trace_id,
-                )
+                if resp.is_success:
+                    return OutboundCallResult(
+                        ok=True,
+                        status="DIALING_CARRIER",
+                        to_phone=normalized_phone,
+                        property_code=prop_code,
+                        voice_preset=tts_res["voice_preset"],
+                        tts_engine=tts_res["tts_engine"],
+                        tts_backend=tts_res["tts_backend"],
+                        audio_url=audio_url,
+                        audio_id=audio_id,
+                        byte_length=tts_res["byte_length"],
+                        conversation_id=str(conv.id),
+                        carrier_status=carrier_status,
+                        carrier_call_sid=call_sid,
+                        note="Cuộc gọi đã được đẩy tới tổng đài viễn thông Twilio PSTN để rung chuông số điện thoại.",
+                        trace_id=trace_id,
+                    )
+                else:
+                    err_msg = carrier_data.get("message") or f"HTTP {resp.status_code}"
+                    err_code = carrier_data.get("code")
+                    return OutboundCallResult(
+                        ok=False,
+                        status="CARRIER_REJECTED",
+                        to_phone=normalized_phone,
+                        property_code=prop_code,
+                        voice_preset=tts_res["voice_preset"],
+                        tts_engine=tts_res["tts_engine"],
+                        tts_backend=tts_res["tts_backend"],
+                        audio_url=audio_url,
+                        audio_id=audio_id,
+                        byte_length=tts_res["byte_length"],
+                        conversation_id=str(conv.id),
+                        carrier_status=f"rejected_code_{err_code}",
+                        carrier_call_sid=None,
+                        note=f"Twilio từ chối cuộc gọi: {err_msg}",
+                        trace_id=trace_id,
+                    )
         except Exception as exc:
             # Fall back to simulation report with exact network error details
             return OutboundCallResult(
